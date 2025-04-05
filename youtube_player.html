@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>YouTube Delay & Loop Player</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f4f4f9;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+    .container {
+      background: #fff;
+      padding: 30px 40px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      max-width: 600px;
+      width: 100%;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #333;
+    }
+    label {
+      display: block;
+      margin: 15px 0 5px;
+      font-weight: bold;
+      color: #555;
+    }
+    input[type="text"], input[type="number"] {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+      font-size: 16px;
+    }
+    button {
+      background: #007BFF;
+      color: #fff;
+      border: none;
+      padding: 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin: 10px 0;
+      width: 100%;
+      font-size: 16px;
+      transition: background 0.3s ease;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    #countdown {
+      text-align: center;
+      font-size: 18px;
+      margin: 15px 0;
+      color: #333;
+    }
+    #player {
+      margin-top: 20px;
+      width: 100%;
+      height: 400px;
+      background: #000;
+    }
+    #loop-controls {
+      margin-top: 20px;
+      text-align: center;
+    }
+    #loop-controls button {
+      width: auto;
+      margin: 5px;
+      padding: 10px 15px;
+      font-size: 14px;
+    }
+    #loop-controls div {
+      margin-top: 10px;
+      font-size: 16px;
+      color: #444;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>YouTube Delay & Loop Player</h1>
+    
+    <label for="url">YouTube URL:</label>
+    <input type="text" id="url" placeholder="Enter YouTube URL" value="https://www.youtube.com/watch?v=nJBLeMrhu9w&list=RDnJBLeMrhu9w&start_radio=1">
+    
+    <label for="delay">Delay (in seconds):</label>
+    <input type="number" id="delay" placeholder="4" value="4">
+    
+    <button onclick="startPlayer()">Start</button>
+    
+    <div id="countdown"></div>
+    
+    <div id="player"></div>
+    
+    <div id="loop-controls">
+      <button onclick="setLoopStart()">Set Loop Start</button>
+      <button onclick="setLoopEnd()">Set Loop End</button>
+      <button onclick="toggleLoop()">
+        <span id="loop-button-text">Start Loop</span>
+      </button>
+      <div>
+        Loop Start: <span id="loop-start">Not set</span><br>
+        Loop End: <span id="loop-end">Not set</span>
+      </div>
+    </div>
+  </div>
+  
+  <!-- YouTube IFrame API -->
+  <script src="https://www.youtube.com/iframe_api"></script>
+  <script>
+    // Global variables
+    let player;
+    let timeoutId = null;
+    let countdownIntervalId = null;
+    let loopIntervalId = null;
+    let loopStartTime = null;
+    let loopEndTime = null;
+    let isLooping = false;
+    
+    // Load YouTube IFrame API and create player
+    function onYouTubeIframeAPIReady() {
+      player = new YT.Player('player', {
+        height: '400',
+        width: '100%',
+        videoId: '', // initially empty
+        playerVars: {
+          'autoplay': 0,
+          'controls': 1
+        },
+        events: {
+          'onReady': onPlayerReady
+        }
+      });
+    }
+    
+    function onPlayerReady(event) {
+      // Player is ready.
+    }
+    
+    // Extract the YouTube video ID from a URL
+    function extractVideoId(url) {
+      const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^\s&]+)/);
+      return match ? match[1] : null;
+    }
+    
+    // Play a short beep sound using the Web Audio API
+    function playBeep() {
+      const context = new (window.AudioContext || window.webkitAudioContext)();
+      const oscillator = context.createOscillator();
+      const gainNode = context.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(context.destination);
+      oscillator.type = 'sine';
+      oscillator.frequency.value = 440; // A4 note
+      gainNode.gain.value = 0.1;
+      oscillator.start();
+      setTimeout(() => oscillator.stop(), 100);
+    }
+    
+    // Start the video with a delay and countdown
+    function startPlayer() {
+      if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
+      if (countdownIntervalId) { clearInterval(countdownIntervalId); countdownIntervalId = null; }
+      if (loopIntervalId) { clearInterval(loopIntervalId); loopIntervalId = null; }
+      isLooping = false;
+      document.getElementById("loop-button-text").innerText = "Start Loop";
+      
+      // Stop any current video playback
+      if (player && player.stopVideo) {
+        player.stopVideo();
+      }
+    
+      const url = document.getElementById('url').value;
+      const delayInput = parseInt(document.getElementById('delay').value, 10);
+      const delay = isNaN(delayInput) ? 4000 : delayInput * 1000;
+      const videoId = extractVideoId(url);
+    
+      if (!videoId) {
+        alert("Please enter a valid YouTube URL.");
+        document.getElementById('countdown').innerText = "";
+        return;
+      }
+      
+      // Reset loop times
+      loopStartTime = null;
+      loopEndTime = null;
+      document.getElementById("loop-start").innerText = "Not set";
+      document.getElementById("loop-end").innerText = "Not set";
+      
+      // Cue the video so it is ready to play (without autoplay)
+      player.cueVideoById(videoId);
+    
+      // Start countdown with beeps
+      let secondsRemaining = Math.ceil(delay / 1000);
+      const countdownEl = document.getElementById('countdown');
+      countdownEl.innerText = `Countdown: ${secondsRemaining} second${secondsRemaining > 1 ? 's' : ''}`;
+    
+      countdownIntervalId = setInterval(() => {
+        secondsRemaining--;
+        if (secondsRemaining > 0) {
+          countdownEl.innerText = `Countdown: ${secondsRemaining} second${secondsRemaining > 1 ? 's' : ''}`;
+          playBeep();
+        } else {
+          clearInterval(countdownIntervalId);
+          countdownIntervalId = null;
+          countdownEl.innerText = "";
+          // Start the video playback
+          player.playVideo();
+        }
+      }, 1000);
+    
+      // Fallback in case countdown doesn't trigger exactly
+      timeoutId = setTimeout(() => {
+        if (player && player.playVideo) {
+          player.playVideo();
+        }
+        timeoutId = null;
+      }, delay);
+    }
+    
+    // Save current time as loop start
+    function setLoopStart() {
+      if (!player || !player.getVideoData || !player.getVideoData().video_id) {
+        alert("No video loaded. Please start a video first.");
+        return;
+      }
+      loopStartTime = player.getCurrentTime();
+      document.getElementById("loop-start").innerText = formatTime(loopStartTime);
+    }
+    
+    // Save current time as loop end
+    function setLoopEnd() {
+      if (!player || !player.getVideoData || !player.getVideoData().video_id) {
+        alert("No video loaded. Please start a video first.");
+        return;
+      }
+      loopEndTime = player.getCurrentTime();
+      document.getElementById("loop-end").innerText = formatTime(loopEndTime);
+    }
+    
+    // Toggle looping mode. When starting, ensure the video plays.
+    // When stopping, clear the loop and pause the video.
+    function toggleLoop() {
+      if (!player || !player.getVideoData || !player.getVideoData().video_id) {
+        alert("No video loaded. Please start a video first.");
+        return;
+      }
+      if (!loopStartTime || !loopEndTime) {
+        alert("Please set both loop start and loop end times.");
+        return;
+      }
+      if (loopEndTime <= loopStartTime) {
+        alert("Loop end time must be greater than loop start time.");
+        return;
+      }
+      
+      if (!isLooping && player.getPlayerState() !== YT.PlayerState.PLAYING) {
+        player.playVideo();
+      }
+      
+      isLooping = !isLooping;
+      const loopButtonText = document.getElementById("loop-button-text");
+      if (isLooping) {
+        loopButtonText.innerText = "Stop Loop";
+        loopIntervalId = setInterval(() => {
+          const currentTime = player.getCurrentTime();
+          if (currentTime >= loopEndTime) {
+            player.seekTo(loopStartTime, true);
+          }
+        }, 200);
+      } else {
+        loopButtonText.innerText = "Start Loop";
+        if (loopIntervalId) {
+          clearInterval(loopIntervalId);
+          loopIntervalId = null;
+        }
+        player.pauseVideo();
+      }
+    }
+    
+    // Helper: Format seconds as mm:ss
+    function formatTime(time) {
+      const minutes = Math.floor(time / 60);
+      const seconds = Math.floor(time % 60);
+      return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+    }
+  </script>
+</body>
+</html>
