@@ -128,10 +128,13 @@
     
     // Load YouTube IFrame API and create player
     function onYouTubeIframeAPIReady() {
+      const defaultUrl = document.getElementById('url').value;
+      const defaultVideoId = extractVideoId(defaultUrl);
+
       player = new YT.Player('player', {
         height: '400',
         width: '100%',
-        videoId: '', // initially empty
+        videoId: defaultVideoId || '', // Load the preview if we have a valid video ID
         playerVars: {
           'autoplay': 0,
           'controls': 1
@@ -293,6 +296,18 @@
       const seconds = Math.floor(time % 60);
       return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
     }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      const urlInput = document.getElementById('url');
+
+      urlInput.addEventListener('change', () => {
+        const newVideoId = extractVideoId(urlInput.value);
+        if (player && newVideoId) {
+          player.cueVideoById(newVideoId); // Show preview for the new video
+        }
+      });
+    });
+
   </script>
 </body>
 </html>
