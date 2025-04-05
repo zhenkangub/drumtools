@@ -181,7 +181,12 @@
       if (player && player.stopVideo) {
         player.stopVideo();
       }
-    
+
+      if (player && typeof player.playVideo === 'function') {
+        player.playVideo();
+        player.pauseVideo();
+      }
+
       const url = document.getElementById('url').value;
       const delayInput = parseInt(document.getElementById('delay').value, 10);
       const delay = isNaN(delayInput) ? 4000 : delayInput * 1000;
